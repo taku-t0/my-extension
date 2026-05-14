@@ -1,26 +1,46 @@
-// The module 'vscode' contains the VS Code extensibility API
-// Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
+import * as path from 'path';
+import * as fs from 'fs';
 
-// This method is called when your extension is activated
-// Your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
-
-	// Use the console to output diagnostic information (console.log) and errors (console.error)
-	// This line of code will only be executed once when your extension is activated
-	console.log('Congratulations, your extension "my-extension" is now active!');
-
-	// The command has been defined in the package.json file
-	// Now provide the implementation of the command with registerCommand
-	// The commandId parameter must match the command field in package.json
-	const disposable = vscode.commands.registerCommand('my-extension.helloWorld', () => {
-		// The code you place here will be executed every time your command is executed
-		// Display a message box to the user
-		vscode.window.showInformationMessage('Hello World from my-extension!');
-	});
-
-	context.subscriptions.push(disposable);
+	const provider = new GameViewProvider(context.extensionUri);
+	context.subscriptions.push(
+		vscode.window.registerWebviewViewProvider('myExtension.gameView', provider)
+	);
 }
 
-// This method is called when your extension is deactivated
-export function deactivate() {}
+class GameViewProvider implements vscode.WebviewViewProvider {
+	constructor(private readonly extensionUri: vscode.Uri) { }
+
+	resolveWebviewView(webviewView: vscode.WebviewView) {
+		webviewView.webview.options = {
+			enableScripts: true,
+			localResourceRoots: [
+				vscode.Uri.joinPath(this.extensionUri, 'webview-ui', 'build')
+			]
+		};
+		webviewView.webview.html = this.getHtml(webviewView.webview);
+	}
+
+	private getHtml(webview: vscode.Webview): string {
+		const buildDir = vscode.Uri.joinPath(this.extensionUri, 'webview-ui', 'build');
+
+		const indexPath = path.join(buildDir.fsPath, 'index.html');
+		let html = fs.readFileSync(indexPath, 'utf8');
+
+		html = html.replace(
+			/(src|href)="([^"]+)"/g,
+			(match, attr, value) => {
+				if (value.startsWith('http')) return match;
+				const uri = webview.asWebviewUri(
+					vscode.Uri.joinPath(buildDir, value)
+				);
+				return `${attr}="${uri}"`;
+			}
+		);
+
+		return html;
+	}
+}
+
+export function deactivate() { }
