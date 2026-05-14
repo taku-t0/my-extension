@@ -69,3 +69,121 @@ You can author your README using Visual Studio Code. Here are some useful editor
 * [Markdown Syntax Reference](https://help.github.com/articles/markdown-basics/)
 
 **Enjoy!**
+
+
+# my-extension README
+
+VS CodeのサイドバーにTic Tac Toe（三目並べ）ゲームを表示するVS Code拡張機能です。
+
+## 機能
+
+- VS Codeのサイドバーで三目並べがプレイできる
+- 手順の履歴管理とタイムトラベル
+- 勝利マスのハイライト表示
+
+## 必要環境
+
+- Node.js 18以上
+- npm
+
+## 開発環境のセットアップ
+
+### 1. 依存パッケージのインストール
+
+```bash
+npm install
+cd webview-ui && npm install && cd ..
+```
+
+### 2. Reactアプリのビルド
+
+```bash
+cd webview-ui && npm run build && cd ..
+```
+
+### 3. 拡張機能本体のビルド
+
+```bash
+npm run compile
+```
+
+## デバッグ手順
+
+### デバッグ起動
+
+1. このプロジェクトをVS Codeで開く
+2. `F5` を押して **Extension Development Host** を起動する
+3. 新しいウィンドウのサイドバーアイコンをクリックしてゲームを開く
+
+### WebviewのDevToolsを開く
+
+Reactアプリ部分をブラウザのように検証できます：
+
+```
+コマンドパレット (Ctrl+Shift+P) → "Developer: Open Webview Developer Tools"
+```
+
+### ウォッチモード（開発中の推奨）
+
+ターミナルを2つ開いて並行実行します：
+
+```bash
+# ターミナル1: ReactアプリのUI確認（ブラウザで開く）
+cd webview-ui && npm start
+
+# ターミナル2: 拡張機能本体の監視ビルド
+npm run watch
+```
+
+変更を反映するには `Ctrl+Shift+F5` でExtension Development Hostを再起動します。
+
+> **注意:** `webview-ui/` での `npm start` はブラウザ上でUIを確認するためのものです。実際のWebviewに反映するには `npm run build` が必要です。
+
+## パッケージング手順
+
+### 1. vsceのインストール
+
+```bash
+npm install -g @vscode/vsce
+```
+
+### 2. 本番用ビルド
+
+```bash
+npm run package
+cd webview-ui && npm run build && cd ..
+```
+
+### 3. .vsixファイルの生成
+
+```bash
+vsce package
+```
+
+プロジェクトルートに `.vsix` ファイルが生成されます。
+
+### 4. ローカルにインストール
+
+```bash
+code --install-extension my-extension-0.0.1.vsix
+```
+
+またはVS Code UI: 拡張機能 → `...` → `VSIXからインストール...`
+
+## 拡張機能の設定
+
+この拡張機能は設定項目を提供しません。
+
+## 既知の問題
+
+なし。
+
+## リリースノート
+
+### 0.0.1
+
+初回リリース。
+
+---
+
+**Enjoy!**
