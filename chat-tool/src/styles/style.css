@@ -1,0 +1,306 @@
+/* ==========================================================================
+   1. 全体レイアウト & グローバル変数
+   ========================================================================== */
+:root {
+  --sidebar-bg: #1e1e24;
+  --sidebar-hover: #2b2b36;
+  --chat-bg: #f8f9fa;
+  --white: #ffffff;
+  --text-main: #2d3748;
+  --text-muted: #718096;
+  --ai-bubble-bg: #ffffff;
+  --user-bubble-bg: #3b82f6;
+  --user-bubble-text: #ffffff;
+  --border-color: #e2e8f0;
+  --primary-color: #3b82f6;
+  --primary-hover: #2563eb;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--chat-bg);
+  color: var(--text-main);
+}
+
+/* 12グリッドシステムの大枠設定 */
+.app-container {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+}
+
+/* ==========================================================================
+   2. サイドバーコンポーネント (3 / 12 カラム)
+   ========================================================================== */
+.sidebar {
+  grid-column: span 3;
+  background-color: var(--sidebar-bg);
+  color: #ecf0f1;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  border-right: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.new-chat-btn {
+  width: 100%;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #fff;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.9rem;
+  transition: background 0.2s, border-color 0.2s;
+  margin-bottom: 1.5rem;
+}
+
+.new-chat-btn:hover {
+  background-color: var(--sidebar-hover);
+  border-color: var(--primary-color);
+}
+
+.plus-icon {
+  font-size: 1.2rem;
+  font-weight: 300;
+}
+
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  overflow-y: auto;
+  max-h: calc(100vh - 140px);
+}
+
+.history-item {
+  padding: 0.75rem 0.85rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  transition: background 0.2s;
+}
+
+.history-item:hover {
+  background-color: var(--sidebar-hover);
+}
+
+.chat-icon {
+  opacity: 0.6;
+}
+
+.history-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-footer {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.4);
+  padding-top: 1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* ==========================================================================
+   3. チャットメインコンテナ (9 / 12 カラム)
+   ========================================================================== */
+.chat-container {
+  grid-column: span 9;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background-color: var(--chat-bg);
+}
+
+.chat-header {
+  background-color: var(--white);
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--border-color);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+}
+
+.header-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.message-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+/* ==========================================================================
+   4. メッセージアイテム (12グリッドによる幅・左右配置制御)
+   ========================================================================== */
+.message-row {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+/* メッセージの最大幅を10カラムに抑える */
+.message-bubble-wrapper {
+  grid-column: span 10;
+  display: flex;
+}
+
+/* AIは左寄せ（1番目のカラムから開始） */
+.ai-align {
+  grid-column-start: 1;
+  justify-content: flex-start;
+}
+
+/* ユーザーは右寄せ（3番目のカラムから開始） */
+.user-align {
+  grid-column-start: 3;
+  justify-content: flex-end;
+}
+
+/* バブルの共通装飾 */
+.message-bubble {
+  padding: 1rem 1.25rem;
+  border-radius: 14px;
+  font-size: 0.925rem;
+  line-height: 1.5;
+  max-width: 100%;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
+  position: relative;
+}
+
+.ai-bubble {
+  background-color: var(--ai-bubble-bg);
+  color: var(--text-main);
+  border: 1px solid var(--border-color);
+  border-top-left-radius: 2px;
+  /* チャットの吹き出し風のアクセント */
+}
+
+.user-bubble {
+  background-color: var(--user-bubble-bg);
+  color: var(--user-bubble-text);
+  border-top-right-radius: 2px;
+}
+
+.message-sender {
+  font-size: 0.75rem;
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+  opacity: 0.7;
+}
+
+.message-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.message-timestamp {
+  display: block;
+  font-size: 0.65rem;
+  text-align: right;
+  margin-top: 0.5rem;
+  opacity: 0.6;
+}
+
+/* ==========================================================================
+   5. 入力エリア (フォーム10 : ボタン2 のグリッド比率)
+   ========================================================================== */
+.input-area-container {
+  background-color: var(--white);
+  padding: 1.25rem;
+  border-t: 1px solid var(--border-color);
+}
+
+.input-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 0.75rem;
+  max-width: 800px;
+  /* 横に広がりすぎないよう中央に寄せる */
+  margin: 0 auto;
+}
+
+.input-field-wrapper {
+  grid-column: span 10;
+}
+
+.submit-btn-wrapper {
+  grid-column: span 2;
+}
+
+.chat-input {
+  width: 100%;
+  padding: 0.85rem 1rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  background-color: #f8fafc;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.chat-input:focus {
+  border-color: var(--primary-color);
+  background-color: var(--white);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.submit-btn {
+  width: 100%;
+  height: 100%;
+  background-color: var(--primary-color);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-weight: 500;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background-color 0.2s, transform 0.1s;
+}
+
+.submit-btn:hover {
+  background-color: var(--primary-hover);
+}
+
+.submit-btn:active {
+  transform: scale(0.98);
+}
+
+/* スクロールバーのカスタマイズ（Webkitブラウザ用） */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 10px;
+}
+
+.sidebar ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+}
