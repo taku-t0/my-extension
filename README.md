@@ -186,4 +186,190 @@ code --install-extension my-extension-0.0.1.vsix
 
 ---
 
+## おまけ：環境構築
+~~~txt:ディレクトリ構造
+my-extension
+   ├── README.md
+   ├── package-lock.json
+   ├── package.json  【自動生成後書き換え】
+   ├── tsconfig.json  【自動生成】
+   ├── webpack.config.js  【自動生成】
+   ├── dist/
+   ├── src
+   │   └── extension.ts  【自動生成後書き換え】
+   ├── .vscode/  【自動生成】
+   └── webview-ui
+       ├── public
+       │   └── index.html
+       └── src
+           ├── App.js
+           ├── index.js
+           └── styles.css
+~~~
+
+### 1. 拡張機能側
+~~~
+$yo code
+~~~
+webpackを選択
+~~~
+? Which bundler to use?
+❯ webpack
+  esbuild
+  unbundled
+~~~
+
+npmを選択
+~~~
+? Which package manager to use?
+❯ npm
+  yarn
+  pnpm
+~~~
+
+package.jsonのscriptを書き換える。script以外は必要に応じて。
+~~~json:package.json
+{
+  "name": "my-extension",
+  "displayName": "My Extension",
+  "version": "0.0.1",
+  "engines": { "vscode": "^1.80.0" },
+  "activationEvents": [],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "my-sidebar",
+          "title": "My Game",
+          "icon": "$(game)"
+        }
+      ]
+    },
+    "views": {
+      "my-sidebar": [
+        {
+          "type": "webview",
+          "id": "myExtension.gameView",
+          "name": "Tic Tac Toe"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "compile": "webpack",
+    "watch": "webpack --watch",
+    "package": "webpack --mode production",
+    "vscode:prepublish": "npm run package && npm --prefix webview-ui run build"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.80.0",
+    "typescript": "^5.0.0",
+    "webpack": "^5.0.0",
+    "webpack-cli": "^5.0.0",
+    "ts-loader": "^9.0.0"
+  }
+}
+~~~
+
+extension.tsを書き換える。必要に応じて修正。
+~~~typescript:extension.ts
+import * as vscode from 'vscode';
+import * as path from 'path';
+import * as fs from 'fs';
+
+export function activate(context: vscode.ExtensionContext) {
+  const provider = new GameViewProvider(context.extensionUri);
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider('myExtension.gameView', provider)
+  );
+}
+
+class GameViewProvider implements vscode.WebviewViewProvider {
+  constructor(private readonly extensionUri: vscode.Uri) {}
+
+  resolveWebviewView(webviewView: vscode.WebviewView) {
+    webviewView.webview.options = {
+      enableScripts: true,
+      localResourceRoots: [
+        vscode.Uri.joinPath(this.extensionUri, 'webview-ui', 'build')
+      ]
+    };
+    webviewView.webview.html = this.getHtml(webviewView.webview);
+  }
+
+  private getHtml(webview: vscode.Webview): string {
+    const buildDir = vscode.Uri.joinPath(this.extensionUri, 'webview-ui', 'build');
+
+    const indexPath = path.join(buildDir.fsPath, 'index.html');
+    let html = fs.readFileSync(indexPath, 'utf8');
+
+    html = html.replace(
+      /(src|href)="([^"]+)"/g,
+      (match, attr, value) => {
+        if (value.startsWith('http')) return match;
+        const uri = webview.asWebviewUri(
+          vscode.Uri.joinPath(buildDir, value)
+        );
+        return `${attr}="${uri}"`;
+      }
+    );
+
+    return html;
+  }
+}
+
+export function deactivate() {}
+~~~
+
+.vscodeignoreを必要に応じて書き換え
+~~~
+.vscode/**
+.vscode-test/**
+src/**
+webview-ui/src/**
+webview-ui/public/**
+webview-ui/node_modules/**
+.gitignore
+tsconfig.json
+webpack.config.js
+~~~
+
+### 2. WebView側(React + typescript)
+
+なかったらインストールできる。
+~~~
+$npx create-react-app --version
+~~~
+
+プロジェクト作成
+~~~
+$npx create-react-app プロジェクト名 --template typescript
+~~~
+
+~~~
+Success! Created react-typescript at /home/takuto/dev/study/<project-name>
+Inside that directory, you can run several commands:
+
+  npm start
+    Starts the development server.
+
+  npm run build
+    Bundles the app into static files for production.
+
+  npm test
+    Starts the test runner.
+
+  npm run eject
+    Removes this tool and copies build dependencies, configuration files
+    and scripts into the app directory. If you do this, you can’t go back!
+
+We suggest that you begin by typing:
+
+  cd <project-name>
+  npm start
+
+Happy hacking!
+~~~
+
 **Enjoy!**

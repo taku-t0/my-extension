@@ -1,26 +1,26 @@
-import { useState } from 'react'
+import { JSX, useState } from 'react'
 
-export default function Game() {
-  const [history, setHistory] = useState([Array(9).fill(null)]);
-  const [currentMove, setCurrentMove] = useState(0);
-  const xIsNext = currentMove % 2 === 0;
-  const currentSquares = history[currentMove];
+export default function App() {
+  const [history, setHistory] = useState<(string | null)[][]>([Array(9).fill(null)]);
+  const [currentMove, setCurrentMove] = useState<number>(0);
+  const xIsNext: boolean = currentMove % 2 === 0;
+  const currentSquares: (string | null)[] = history[currentMove];
 
-  function handlePlay(nextSquares) {
+  function handlePlay(nextSquares: (string | null)[]): void {
     const nextHistory = [...history.slice(0, currentMove + 1), nextSquares];
     setHistory(nextHistory);
     setCurrentMove(nextHistory.length - 1);
   }
 
-  function jumpTo(nextMove) {
+  function jumpTo(nextMove: number): void {
     setCurrentMove(nextMove);
   }
 
-  const moves = history.map((squares, move) => {
-    let description;
-    if(move === currentMove){
+  const moves = history.map((squares: (string | null)[], move: number) => {
+    let description: string;
+    if (move === currentMove) {
       description = 'You are at move #' + move;
-    }else if (move > 0) {
+    } else if (move > 0) {
       description = 'Go to move #' + move;
     } else {
       description = 'Go to game start';
@@ -44,8 +44,14 @@ export default function Game() {
   );
 }
 
-function Board({ xIsNext, squares, onPlay, historyLength}) {
-  function handleClick(i) {
+function Board({ xIsNext, squares, onPlay, historyLength }:
+  {
+    xIsNext: boolean,
+    squares: (string | null)[],
+    onPlay: (nextSquares: (string | null)[]) => void,
+    historyLength: number
+  }) {
+  function handleClick(i: number): void {
     if (squares[i] || calculateWinnerLine(squares)) {
       return;
     }
@@ -59,12 +65,12 @@ function Board({ xIsNext, squares, onPlay, historyLength}) {
   }
 
   const winnerLine = calculateWinnerLine(squares);
-  let status;
+  let status: string;
   let isHighlight = false;
   if (winnerLine) {
     status = "Winner: " + squares[winnerLine[0]];
     isHighlight = true;
-  } else if(historyLength === 10) {
+  } else if (historyLength === 10) {
     status = "Draw";
   } else {
     status = "Next player: " + (xIsNext ? "X" : "O");
@@ -74,16 +80,16 @@ function Board({ xIsNext, squares, onPlay, historyLength}) {
     <div>
       <div className="status">{status}</div>
       {(function () {
-        const list1 = []
+        const list1: JSX.Element[] = []
         for (let i = 0; i < 3; i++) {
-          list1.push(<div className="board-row">
+          list1.push(<div className="board-row" key={i}>
             {(function () {
               const list2 = []
               for (let j = 0; j < 3; j++) {
-                if(isHighlight && ( winnerLine[0] === j + 3 * i || winnerLine[1] === j + 3 * i || winnerLine[2] === j + 3 * i)){
-                  list2.push(<Square value={squares[j + 3 * i]} onSquareClick={() => handleClick(j + 3 * i)} highlight={"highlight"}/>);
-                }else{
-                  list2.push(<Square value={squares[j + 3 * i]} onSquareClick={() => handleClick(j + 3 * i)} />);
+                if (isHighlight && (winnerLine![0] === j + 3 * i || winnerLine![1] === j + 3 * i || winnerLine![2] === j + 3 * i)) {
+                  list2.push(<Square  key={j + 3 * i} value={squares[j + 3 * i]} onSquareClick={() => handleClick(j + 3 * i)} highlight={"highlight"} />);
+                } else {
+                  list2.push(<Square  key={j + 3 * i} value={squares[j + 3 * i]} onSquareClick={() => handleClick(j + 3 * i)} />);
                 }
               }
               return list2;
@@ -96,11 +102,16 @@ function Board({ xIsNext, squares, onPlay, historyLength}) {
   );
 }
 
-function Square({ value, onSquareClick, highlight }) {
+function Square({ value, onSquareClick, highlight }:
+  {
+    value: string | null;
+    onSquareClick: () => void;
+    highlight?: string;
+  }) {
   return <button className={`square ${highlight}`} onClick={onSquareClick}>{value}</button>;
 }
 
-function calculateWinnerLine(squares) {
+function calculateWinnerLine(squares: (string | null)[]): number[] | null {
   const lines = [
     [0, 1, 2],
     [3, 4, 5],

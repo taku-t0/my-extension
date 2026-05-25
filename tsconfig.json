@@ -15,6 +15,7 @@
 		"types": ["node"],
 	},
 	"exclude": [
-		"src/test"
+		"src/test",
+		"webview-ui"
 	]
 }
