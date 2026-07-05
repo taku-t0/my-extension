@@ -5,21 +5,38 @@
     <title>画面設計書 アノテーションツール (Interactive)</title>
     <style>
         body { font-family: sans-serif; margin: 20px; background-color: #f5f5f5; }
-        .toolbar { background: #fff; padding: 15px; border-radius: 8px 8px 0 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1); display: flex; gap: 15px; align-items: center; border-bottom: 1px solid #ddd; }
-        .edit-panel { background: #eef2f5; padding: 10px 15px; border-radius: 0 0 8px 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; display: flex; gap: 15px; align-items: center; height: 32px;}
+        .toolbar { background: #fff; padding: 15px; border-radius: 8px 8px 0 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1); display: flex; gap: 15px; align-items: center; border-bottom: 1px solid #ddd; flex-wrap: wrap; }
         button { padding: 6px 12px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
         button:hover { background-color: #0056b3; }
         button:disabled { background-color: #ccc; cursor: not-allowed; }
         .btn-danger { background-color: #dc3545; }
         .btn-danger:hover { background-color: #c82333; }
-        
+        .btn-secondary { background-color: #6c757d; }
+        .btn-secondary:hover { background-color: #545b62; }
+
         .input-group { display: flex; align-items: center; gap: 5px; font-size: 14px; }
         .input-group input { padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px; }
-        
+
+        .config-status { font-size: 12px; color: #666; }
+
+        /* アコーディオン（詳細編集パネル） */
+        .accordion { background: #eef2f5; border-radius: 0 0 8px 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; overflow: hidden; }
+        .accordion-header { display: flex; align-items: center; gap: 10px; padding: 10px 15px; cursor: pointer; user-select: none; }
+        .accordion-header:hover { background-color: #e3e9ed; }
+        .accordion-header .chevron { margin-left: auto; transition: transform 0.15s ease; font-size: 12px; color: #555; }
+        .accordion.collapsed .chevron { transform: rotate(-90deg); }
+        .accordion-body { padding: 12px 15px 16px 15px; display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: flex-end; border-top: 1px solid #dbe1e6; }
+        .accordion.collapsed .accordion-body { display: none; }
+        .accordion.disabled-panel .accordion-body { opacity: 0.5; pointer-events: none; }
+
+        .field-item { display: flex; flex-direction: column; gap: 3px; font-size: 13px; }
+        .field-item label { color: #444; font-weight: bold; }
+        .field-item input { padding: 5px 8px; border: 1px solid #ccc; border-radius: 4px; min-width: 140px; }
+
+        .delete-wrap { margin-left: auto; align-self: center; }
+
         .canvas-container { overflow: auto; background: #fff; border: 1px solid #ccc; box-shadow: 0 2px 4px rgba(0,0,0,0.1); max-width: 100%; max-height: 75vh; position: relative;}
         canvas { display: block; cursor: crosshair; }
-        
-        .disabled-panel { opacity: 0.5; pointer-events: none; }
     </style>
 </head>
 <body>
@@ -29,25 +46,33 @@
             <label for="imageLoader"><strong>1. 画像: </strong></label>
             <input type="file" id="imageLoader" accept="image/*">
         </div>
+        <div>
+            <label for="configLoader"><strong>設定ファイル(config.json): </strong></label>
+            <input type="file" id="configLoader" accept=".json,application/json">
+        </div>
+        <button id="resetConfigBtn" class="btn-secondary">項目をデフォルトに戻す</button>
         <button id="exportBtn">2. 画像とJSONをエクスポート</button>
         <span id="statusText" style="color: #666; font-size: 14px; margin-left:auto;">対象をドラッグして赤枠を作成してください</span>
     </div>
+    <div>
+        <span id="configStatus" class="config-status"></span>
+    </div>
 
-    <div class="edit-panel disabled-panel" id="editPanel">
-        <strong id="selectedNumberDisplay">選択中: なし</strong>
-        <div class="input-group" style="margin-left: 10px;">
-            <label>番号:</label>
-            <input type="text" id="inputNumber" style="width: 50px;" autocomplete="off">
+    <div class="accordion disabled-panel" id="accordion">
+        <div class="accordion-header" id="accordionHeader">
+            <strong id="selectedNumberDisplay">選択中: なし</strong>
+            <span class="chevron">▼</span>
         </div>
-        <div class="input-group">
-            <label>種別:</label>
-            <input type="text" id="inputType" placeholder="例: text, button" autocomplete="off" style="width: 100px;">
+        <div class="accordion-body" id="accordionBody">
+            <div class="field-item">
+                <label>番号</label>
+                <input type="text" id="inputNumber" style="width: 60px;" autocomplete="off">
+            </div>
+            <div id="fieldsContainer" style="display: contents;"></div>
+            <div class="delete-wrap">
+                <button class="btn-danger" id="deleteBtn">削除</button>
+            </div>
         </div>
-        <div class="input-group">
-            <label>詳細・ラベル:</label>
-            <input type="text" id="inputLabel" placeholder="例: 氏名を入力" autocomplete="off" style="width: 250px;">
-        </div>
-        <button class="btn-danger" id="deleteBtn" style="margin-left: auto;">削除</button>
     </div>
 
     <div class="canvas-container">
@@ -56,21 +81,29 @@
 
     <script>
         const imageLoader = document.getElementById('imageLoader');
+        const configLoader = document.getElementById('configLoader');
+        const resetConfigBtn = document.getElementById('resetConfigBtn');
+        const configStatus = document.getElementById('configStatus');
         const exportBtn = document.getElementById('exportBtn');
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
-        
-        const editPanel = document.getElementById('editPanel');
+
+        const accordion = document.getElementById('accordion');
+        const accordionHeader = document.getElementById('accordionHeader');
         const selectedNumberDisplay = document.getElementById('selectedNumberDisplay');
         const inputNumber = document.getElementById('inputNumber');
-        const inputType = document.getElementById('inputType');
-        const inputLabel = document.getElementById('inputLabel');
+        const fieldsContainer = document.getElementById('fieldsContainer');
         const deleteBtn = document.getElementById('deleteBtn');
 
         let currentImage = null;
-        let markers = []; 
+        let markers = [];
         let counter = 1;
         let selectedMarkerUid = null; // 内部管理用のユニークID
+
+        // 項目定義（key: JSON出力時のキー名, value: 画面表示用のラベル）
+        const DEFAULT_FIELD_CONFIG = { type: '種別', label: '詳細・ラベル' };
+        let fieldConfig = { ...DEFAULT_FIELD_CONFIG };
+        const CONFIG_STORAGE_KEY = 'screenDesignTool_fieldConfig';
 
         // マウス操作用のステート
         let isDrawingBox = false;
@@ -85,6 +118,118 @@
 
         const CIRCLE_RADIUS = 16;
         const HANDLE_SIZE = 8; // リサイズ用ハンドルのサイズ
+
+        // ------------------------------
+        // 設定ファイル（config.json）関連
+        // ------------------------------
+
+        function buildEmptyData() {
+            const data = {};
+            Object.keys(fieldConfig).forEach(key => { data[key] = ''; });
+            return data;
+        }
+
+        function rebuildFieldInputs() {
+            fieldsContainer.innerHTML = '';
+            Object.entries(fieldConfig).forEach(([key, labelText]) => {
+                const wrap = document.createElement('div');
+                wrap.className = 'field-item';
+
+                const label = document.createElement('label');
+                label.textContent = labelText;
+                label.setAttribute('for', `field_input_${key}`);
+
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.id = `field_input_${key}`;
+                input.dataset.key = key;
+                input.autocomplete = 'off';
+                input.placeholder = labelText;
+                input.addEventListener('input', (e) => {
+                    const m = markers.find(m => m.uid === selectedMarkerUid);
+                    if (m) m.data[e.target.dataset.key] = e.target.value;
+                });
+
+                wrap.appendChild(label);
+                wrap.appendChild(input);
+                fieldsContainer.appendChild(wrap);
+            });
+        }
+
+        function setFieldConfig(newConfig, sourceLabel) {
+            fieldConfig = newConfig;
+            rebuildFieldInputs();
+
+            // 既存マーカーのデータを新しい項目構成に合わせて移行（一致するキーは維持、無いキーは空欄化）
+            markers.forEach(m => {
+                const migrated = buildEmptyData();
+                Object.keys(migrated).forEach(key => {
+                    if (Object.prototype.hasOwnProperty.call(m.data, key)) {
+                        migrated[key] = m.data[key];
+                    }
+                });
+                m.data = migrated;
+            });
+
+            updateEditPanel();
+
+            const keyCount = Object.keys(fieldConfig).length;
+            configStatus.textContent = `${sourceLabel} (${keyCount}項目: ${Object.values(fieldConfig).join(' / ')})`;
+
+            try {
+                localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(fieldConfig));
+            } catch (err) {
+                // localStorageが使用できない環境では無視（ファイル再読み込み時の自動復元のみできなくなる）
+            }
+        }
+
+        configLoader.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                try {
+                    const parsed = JSON.parse(event.target.result);
+                    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+                        throw new Error('JSONの形式が不正です（{ "key": "表示名", ... } の形式で指定してください）');
+                    }
+                    setFieldConfig(parsed, `読み込み済み: ${file.name}`);
+                } catch (err) {
+                    alert('config.jsonの読み込みに失敗しました: ' + err.message);
+                }
+            };
+            reader.readAsText(file);
+            // 同じファイルを続けて選択してもchangeイベントが発火するようにリセット
+            configLoader.value = '';
+        });
+
+        resetConfigBtn.addEventListener('click', function() {
+            try {
+                localStorage.removeItem(CONFIG_STORAGE_KEY);
+            } catch (err) { /* noop */ }
+            setFieldConfig({ ...DEFAULT_FIELD_CONFIG }, 'デフォルト項目を使用中');
+        });
+
+        // 起動時：前回読み込んだ設定があれば自動復元、無ければデフォルトを使用
+        (function initFieldConfig() {
+            let restored = null;
+            try {
+                const saved = localStorage.getItem(CONFIG_STORAGE_KEY);
+                if (saved) restored = JSON.parse(saved);
+            } catch (err) {
+                restored = null;
+            }
+            if (restored && typeof restored === 'object') {
+                setFieldConfig(restored, '前回の設定を復元しました');
+            } else {
+                setFieldConfig({ ...DEFAULT_FIELD_CONFIG }, 'デフォルト項目を使用中');
+            }
+        })();
+
+        // アコーディオンの開閉
+        accordionHeader.addEventListener('click', function() {
+            accordion.classList.toggle('collapsed');
+        });
 
         // 画像読み込み
         imageLoader.addEventListener('change', function(e) {
@@ -194,7 +339,7 @@
                 }
                 lastMouseX = x; lastMouseY = y;
                 drawAll();
-                
+
             } else if (isDraggingCircle && selectedMarkerUid) {
                 const m = markers.find(m => m.uid === selectedMarkerUid);
                 if (m) {
@@ -235,7 +380,7 @@
                 }
                 if (cursorStyle === 'crosshair') {
                     const isHovering = markers.some(m => {
-                        return (Math.hypot(m.circle.x - x, m.circle.y - y) <= CIRCLE_RADIUS) || 
+                        return (Math.hypot(m.circle.x - x, m.circle.y - y) <= CIRCLE_RADIUS) ||
                                (x >= m.box.x && x <= m.box.x + m.box.w && y >= m.box.y && y <= m.box.y + m.box.h);
                     });
                     if (isHovering) cursorStyle = 'move';
@@ -269,13 +414,13 @@
                 if (w > 5 && h > 5) {
                     const displayId = String(counter++);
                     const newUid = Date.now().toString() + Math.random().toString(36).substr(2, 5); // ユニークID
-                    
+
                     markers.push({
                         uid: newUid,
                         displayId: displayId,
                         box: { x, y, w, h },
                         circle: { x: x + w + 20, y: Math.max(CIRCLE_RADIUS, y - 20) },
-                        data: { type: '', label: '' }
+                        data: buildEmptyData()
                     });
                     selectedMarkerUid = newUid;
                     updateEditPanel();
@@ -294,16 +439,6 @@
             }
         });
 
-        inputType.addEventListener('input', (e) => {
-            const m = markers.find(m => m.uid === selectedMarkerUid);
-            if (m) m.data.type = e.target.value;
-        });
-
-        inputLabel.addEventListener('input', (e) => {
-            const m = markers.find(m => m.uid === selectedMarkerUid);
-            if (m) m.data.label = e.target.value;
-        });
-
         deleteBtn.addEventListener('click', () => {
             if (!selectedMarkerUid) return;
             markers = markers.filter(m => m.uid !== selectedMarkerUid);
@@ -315,27 +450,31 @@
         function updateEditPanel() {
             if (selectedMarkerUid) {
                 const m = markers.find(m => m.uid === selectedMarkerUid);
-                editPanel.classList.remove('disabled-panel');
+                accordion.classList.remove('disabled-panel');
+                accordion.classList.remove('collapsed');
                 selectedNumberDisplay.textContent = `選択中: ${m.displayId}`;
                 inputNumber.value = m.displayId;
-                inputType.value = m.data.type;
-                inputLabel.value = m.data.label;
-                
+
+                Object.keys(fieldConfig).forEach(key => {
+                    const el = document.getElementById(`field_input_${key}`);
+                    if (el) el.value = m.data[key] || '';
+                });
+
                 // 丸数字を動かした直後などにフォーカスが奪われないようにする配慮
-                if (document.activeElement !== inputNumber && 
-                    document.activeElement !== inputType && 
-                    document.activeElement !== inputLabel) {
-                    inputNumber.focus(); 
+                const activeIsField = document.activeElement === inputNumber ||
+                    (document.activeElement && document.activeElement.dataset && document.activeElement.dataset.key);
+                if (!activeIsField) {
+                    inputNumber.focus();
                 }
             } else {
-                editPanel.classList.add('disabled-panel');
+                accordion.classList.add('disabled-panel');
                 selectedNumberDisplay.textContent = `選択中: なし`;
                 inputNumber.value = '';
-                inputType.value = '';
-                inputLabel.value = '';
+                Object.keys(fieldConfig).forEach(key => {
+                    const el = document.getElementById(`field_input_${key}`);
+                    if (el) el.value = '';
+                });
                 inputNumber.blur();
-                inputType.blur();
-                inputLabel.blur();
             }
         }
 
@@ -373,14 +512,14 @@
 
             const nearestX = Math.max(bx, Math.min(cx, bx + bw));
             const nearestY = Math.max(by, Math.min(cy, by + bh));
-            
+
             const dx = cx - nearestX;
             const dy = cy - nearestY;
             const distance = Math.hypot(dx, dy);
-            
+
             let lineEndX = cx;
             let lineEndY = cy;
-            
+
             if (distance > CIRCLE_RADIUS) {
                 const ratio = CIRCLE_RADIUS / distance;
                 lineEndX = cx - dx * ratio;
@@ -449,7 +588,7 @@
         // エクスポート処理
         exportBtn.addEventListener('click', function() {
             if (!currentImage || markers.length === 0) return alert("画像がないか、番号が振られていません。");
-            selectedMarkerUid = null; 
+            selectedMarkerUid = null;
             updateEditPanel();
             drawAll();
 
@@ -467,8 +606,7 @@
                     number: m.displayId,
                     box: m.box,
                     circle: m.circle,
-                    type: m.data.type,
-                    label: m.data.label
+                    ...m.data
                 }))
             };
             const blob = new Blob([JSON.stringify(outputData, null, 2)], { type: 'application/json' });
