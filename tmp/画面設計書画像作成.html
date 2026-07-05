@@ -13,13 +13,12 @@
         .btn-danger { background-color: #dc3545; }
         .btn-danger:hover { background-color: #c82333; }
         
-        .input-group { display: flex; align-items: center; gap: 5px; }
+        .input-group { display: flex; align-items: center; gap: 5px; font-size: 14px; }
         .input-group input { padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px; }
         
         .canvas-container { overflow: auto; background: #fff; border: 1px solid #ccc; box-shadow: 0 2px 4px rgba(0,0,0,0.1); max-width: 100%; max-height: 75vh; position: relative;}
         canvas { display: block; cursor: crosshair; }
         
-        /* 選択中の項目がない時は編集パネルを薄くする */
         .disabled-panel { opacity: 0.5; pointer-events: none; }
     </style>
 </head>
@@ -36,15 +35,19 @@
 
     <div class="edit-panel disabled-panel" id="editPanel">
         <strong id="selectedNumberDisplay">選択中: なし</strong>
+        <div class="input-group" style="margin-left: 10px;">
+            <label>番号:</label>
+            <input type="text" id="inputNumber" style="width: 50px;" autocomplete="off">
+        </div>
         <div class="input-group">
             <label>種別:</label>
-            <input type="text" id="inputType" placeholder="例: text, button" autocomplete="off">
+            <input type="text" id="inputType" placeholder="例: text, button" autocomplete="off" style="width: 100px;">
         </div>
         <div class="input-group">
             <label>詳細・ラベル:</label>
             <input type="text" id="inputLabel" placeholder="例: 氏名を入力" autocomplete="off" style="width: 250px;">
         </div>
-        <button class="btn-danger" id="deleteBtn">この番号を削除</button>
+        <button class="btn-danger" id="deleteBtn" style="margin-left: auto;">削除</button>
     </div>
 
     <div class="canvas-container">
@@ -56,32 +59,34 @@
         const exportBtn = document.getElementById('exportBtn');
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
-        const statusText = document.getElementById('statusText');
         
-        // 編集パネルの要素
         const editPanel = document.getElementById('editPanel');
         const selectedNumberDisplay = document.getElementById('selectedNumberDisplay');
+        const inputNumber = document.getElementById('inputNumber');
         const inputType = document.getElementById('inputType');
         const inputLabel = document.getElementById('inputLabel');
         const deleteBtn = document.getElementById('deleteBtn');
 
-        // アプリケーションのステート（状態）
         let currentImage = null;
-        let markers = []; // すべての図形データを保持する配列
+        let markers = []; 
         let counter = 1;
-        let selectedMarkerId = null; // 現在選択されている丸数字のID
+        let selectedMarkerUid = null; // 内部管理用のユニークID
 
         // マウス操作用のステート
         let isDrawingBox = false;
-        let isDraggingCircle = false;
-        let startX = 0; let startY = 0;
-        let currentX = 0; let currentY = 0;
+        let isDraggingGroup = false;  // 赤枠を掴んで全体を移動中
+        let isDraggingCircle = false; // 丸数字だけを移動中
+        let isResizing = false;       // リサイズ中
+        let resizeHandle = null;      // どの角をリサイズしているか ('nw', 'ne', 'sw', 'se')
+
+        let startX = 0, startY = 0;
+        let currentX = 0, currentY = 0;
+        let lastMouseX = 0, lastMouseY = 0;
 
         const CIRCLE_RADIUS = 16;
+        const HANDLE_SIZE = 8; // リサイズ用ハンドルのサイズ
 
-        // ----------------------------------------------------
         // 画像読み込み
-        // ----------------------------------------------------
         imageLoader.addEventListener('change', function(e) {
             const file = e.target.files[0];
             if (!file) return;
@@ -95,7 +100,7 @@
                     currentImage = img;
                     markers = [];
                     counter = 1;
-                    selectedMarkerId = null;
+                    selectedMarkerUid = null;
                     updateEditPanel();
                     drawAll();
                 }
@@ -104,39 +109,70 @@
             reader.readAsDataURL(file);
         });
 
-        // ----------------------------------------------------
+        // リサイズハンドルの当たり判定
+        function getHitHandle(x, y, box) {
+            const h = HANDLE_SIZE;
+            if (x >= box.x - h/2 && x <= box.x + h/2 && y >= box.y - h/2 && y <= box.y + h/2) return 'nw';
+            if (x >= box.x + box.w - h/2 && x <= box.x + box.w + h/2 && y >= box.y - h/2 && y <= box.y + h/2) return 'ne';
+            if (x >= box.x - h/2 && x <= box.x + h/2 && y >= box.y + box.h - h/2 && y <= box.y + box.h + h/2) return 'sw';
+            if (x >= box.x + box.w - h/2 && x <= box.x + box.w + h/2 && y >= box.y + box.h - h/2 && y <= box.y + box.h + h/2) return 'se';
+            return null;
+        }
+
         // マウスイベント処理
-        // ----------------------------------------------------
         canvas.addEventListener('mousedown', function(e) {
             if (!currentImage) return;
             const { x, y } = getMousePos(e);
+            lastMouseX = x;
+            lastMouseY = y;
 
-            // 1. クリックした場所に丸数字があるか判定（逆順にループして最前面を取得）
+            // 1. 選択中の図形のリサイズハンドル判定
+            if (selectedMarkerUid) {
+                const selM = markers.find(m => m.uid === selectedMarkerUid);
+                if (selM) {
+                    const handle = getHitHandle(x, y, selM.box);
+                    if (handle) {
+                        isResizing = true;
+                        resizeHandle = handle;
+                        return;
+                    }
+                }
+            }
+
+            // 2. 丸数字と赤枠の当たり判定
             let hitMarker = null;
+            let hitType = null; // 'circle' or 'box'
+
             for (let i = markers.length - 1; i >= 0; i--) {
                 const m = markers[i];
-                // ピタゴラスの定理で円の中心とマウスの距離を計算
-                const distance = Math.hypot(m.circle.x - x, m.circle.y - y);
-                if (distance <= CIRCLE_RADIUS + 2) {
+                // 丸数字に当たったか判定
+                if (Math.hypot(m.circle.x - x, m.circle.y - y) <= CIRCLE_RADIUS + 2) {
                     hitMarker = m;
+                    hitType = 'circle';
+                    break;
+                }
+                // 赤枠に当たったか判定
+                const inBox = x >= m.box.x && x <= m.box.x + m.box.w && y >= m.box.y && y <= m.box.y + m.box.h;
+                if (inBox) {
+                    hitMarker = m;
+                    hitType = 'box';
                     break;
                 }
             }
 
             if (hitMarker) {
-                // 丸数字をドラッグして移動するモードへ
-                selectedMarkerId = hitMarker.id;
-                isDraggingCircle = true;
+                selectedMarkerUid = hitMarker.uid;
+                if (hitType === 'circle') {
+                    isDraggingCircle = true; // 丸だけ動かす
+                } else {
+                    isDraggingGroup = true;  // 全体を動かす
+                }
                 updateEditPanel();
             } else {
-                // 何もない場所をクリックした場合：新しく赤枠を描画するモードへ
-                selectedMarkerId = null;
+                selectedMarkerUid = null;
                 updateEditPanel();
                 isDrawingBox = true;
-                startX = x;
-                startY = y;
-                currentX = x;
-                currentY = y;
+                startX = x; startY = y; currentX = x; currentY = y;
             }
             drawAll();
         });
@@ -144,122 +180,185 @@
         canvas.addEventListener('mousemove', function(e) {
             if (!currentImage) return;
             const { x, y } = getMousePos(e);
+            const dx = x - lastMouseX;
+            const dy = y - lastMouseY;
 
-            if (isDraggingCircle && selectedMarkerId) {
-                // 選択中の丸数字の座標を更新
-                const m = markers.find(m => m.id === selectedMarkerId);
+            if (isResizing && selectedMarkerUid) {
+                const m = markers.find(m => m.uid === selectedMarkerUid);
                 if (m) {
-                    m.circle.x = x;
-                    m.circle.y = y;
+                    // 掴んだ角に応じて枠のサイズと座標を変更
+                    if (resizeHandle.includes('e')) m.box.w += dx;
+                    if (resizeHandle.includes('w')) { m.box.x += dx; m.box.w -= dx; }
+                    if (resizeHandle.includes('s')) m.box.h += dy;
+                    if (resizeHandle.includes('n')) { m.box.y += dy; m.box.h -= dy; }
                 }
+                lastMouseX = x; lastMouseY = y;
+                drawAll();
+                
+            } else if (isDraggingCircle && selectedMarkerUid) {
+                const m = markers.find(m => m.uid === selectedMarkerUid);
+                if (m) {
+                    m.circle.x += dx;
+                    m.circle.y += dy;
+                }
+                lastMouseX = x; lastMouseY = y;
                 canvas.style.cursor = 'move';
                 drawAll();
+
+            } else if (isDraggingGroup && selectedMarkerUid) {
+                const m = markers.find(m => m.uid === selectedMarkerUid);
+                if (m) {
+                    m.box.x += dx;
+                    m.box.y += dy;
+                    m.circle.x += dx;
+                    m.circle.y += dy;
+                }
+                lastMouseX = x; lastMouseY = y;
+                canvas.style.cursor = 'move';
+                drawAll();
+
             } else if (isDrawingBox) {
-                // ドラッグ中の赤枠の現在座標を更新
                 currentX = x;
                 currentY = y;
                 drawAll();
+
             } else {
-                // ホバー時のカーソル変更
-                let isHovering = markers.some(m => Math.hypot(m.circle.x - x, m.circle.y - y) <= CIRCLE_RADIUS);
-                canvas.style.cursor = isHovering ? 'pointer' : 'crosshair';
+                // ホバー時のカーソル変更ロジック
+                let cursorStyle = 'crosshair';
+                if (selectedMarkerUid) {
+                    const selM = markers.find(m => m.uid === selectedMarkerUid);
+                    if (selM) {
+                        const h = getHitHandle(x, y, selM.box);
+                        if (h === 'nw' || h === 'se') cursorStyle = 'nwse-resize';
+                        else if (h === 'ne' || h === 'sw') cursorStyle = 'nesw-resize';
+                    }
+                }
+                if (cursorStyle === 'crosshair') {
+                    const isHovering = markers.some(m => {
+                        return (Math.hypot(m.circle.x - x, m.circle.y - y) <= CIRCLE_RADIUS) || 
+                               (x >= m.box.x && x <= m.box.x + m.box.w && y >= m.box.y && y <= m.box.y + m.box.h);
+                    });
+                    if (isHovering) cursorStyle = 'move';
+                }
+                canvas.style.cursor = cursorStyle;
             }
         });
 
         canvas.addEventListener('mouseup', function(e) {
-            if (isDraggingCircle) {
-                isDraggingCircle = false;
-                canvas.style.cursor = 'crosshair';
+            if (isResizing) {
+                // マイナスの幅/高さを正規化する（左上にドラッグして反転した場合の補正）
+                const m = markers.find(m => m.uid === selectedMarkerUid);
+                if (m) {
+                    if (m.box.w < 0) { m.box.x += m.box.w; m.box.w = Math.abs(m.box.w); }
+                    if (m.box.h < 0) { m.box.y += m.box.h; m.box.h = Math.abs(m.box.h); }
+                }
             }
+
+            isDraggingGroup = false;
+            isDraggingCircle = false;
+            isResizing = false;
+            canvas.style.cursor = 'crosshair';
 
             if (isDrawingBox) {
                 isDrawingBox = false;
-                // 幅と高さを計算（右下・左上のどちらにドラッグしても対応）
                 const w = Math.abs(currentX - startX);
                 const h = Math.abs(currentY - startY);
                 const x = Math.min(startX, currentX);
                 const y = Math.min(startY, currentY);
 
-                // ドラッグ量が少なすぎる（5px未満）場合は単なるクリックとみなし作成をキャンセル
                 if (w > 5 && h > 5) {
-                    const newId = counter++;
+                    const displayId = String(counter++);
+                    const newUid = Date.now().toString() + Math.random().toString(36).substr(2, 5); // ユニークID
+                    
                     markers.push({
-                        id: newId,
+                        uid: newUid,
+                        displayId: displayId,
                         box: { x, y, w, h },
-                        // 丸数字の初期位置は、枠の右上に少しずらして配置
                         circle: { x: x + w + 20, y: Math.max(CIRCLE_RADIUS, y - 20) },
                         data: { type: '', label: '' }
                     });
-                    // 作成直後に選択状態にする
-                    selectedMarkerId = newId;
+                    selectedMarkerUid = newUid;
                     updateEditPanel();
                 }
                 drawAll();
             }
         });
 
-        // ----------------------------------------------------
         // データ編集・削除処理
-        // ----------------------------------------------------
+        inputNumber.addEventListener('input', (e) => {
+            const m = markers.find(m => m.uid === selectedMarkerUid);
+            if (m) {
+                m.displayId = e.target.value;
+                selectedNumberDisplay.textContent = `選択中: ${m.displayId}`;
+                drawAll(); // 番号が変更されたら即座に描画を更新
+            }
+        });
+
         inputType.addEventListener('input', (e) => {
-            const m = markers.find(m => m.id === selectedMarkerId);
+            const m = markers.find(m => m.uid === selectedMarkerUid);
             if (m) m.data.type = e.target.value;
         });
 
         inputLabel.addEventListener('input', (e) => {
-            const m = markers.find(m => m.id === selectedMarkerId);
+            const m = markers.find(m => m.uid === selectedMarkerUid);
             if (m) m.data.label = e.target.value;
         });
 
         deleteBtn.addEventListener('click', () => {
-            if (!selectedMarkerId) return;
-            markers = markers.filter(m => m.id !== selectedMarkerId);
-            selectedMarkerId = null;
+            if (!selectedMarkerUid) return;
+            markers = markers.filter(m => m.uid !== selectedMarkerUid);
+            selectedMarkerUid = null;
             updateEditPanel();
             drawAll();
         });
 
         function updateEditPanel() {
-            if (selectedMarkerId) {
-                const m = markers.find(m => m.id === selectedMarkerId);
+            if (selectedMarkerUid) {
+                const m = markers.find(m => m.uid === selectedMarkerUid);
                 editPanel.classList.remove('disabled-panel');
-                selectedNumberDisplay.textContent = `番号 ${m.id} を編集`;
+                selectedNumberDisplay.textContent = `選択中: ${m.displayId}`;
+                inputNumber.value = m.displayId;
                 inputType.value = m.data.type;
                 inputLabel.value = m.data.label;
-                inputType.focus();
+                
+                // 丸数字を動かした直後などにフォーカスが奪われないようにする配慮
+                if (document.activeElement !== inputNumber && 
+                    document.activeElement !== inputType && 
+                    document.activeElement !== inputLabel) {
+                    inputNumber.focus(); 
+                }
             } else {
                 editPanel.classList.add('disabled-panel');
                 selectedNumberDisplay.textContent = `選択中: なし`;
+                inputNumber.value = '';
                 inputType.value = '';
                 inputLabel.value = '';
+                inputNumber.blur();
                 inputType.blur();
                 inputLabel.blur();
             }
         }
 
-        // ----------------------------------------------------
-        // 描画（レンダリング）処理
-        // ----------------------------------------------------
+        // 描画処理
         function drawAll() {
             if (!currentImage) return;
 
-            // キャンバスを一旦クリアして画像を再描画
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.drawImage(currentImage, 0, 0);
 
-            // 確定済みのすべてのマーカーを描画
-            markers.forEach(m => {
-                drawMarker(m, m.id === selectedMarkerId);
-            });
+            // 非選択のマーカーを先に描画
+            markers.filter(m => m.uid !== selectedMarkerUid).forEach(m => drawMarker(m, false));
+            // 選択中のマーカーを最前面に描画
+            const selM = markers.find(m => m.uid === selectedMarkerUid);
+            if (selM) drawMarker(selM, true);
 
-            // ドラッグ中の仮の赤枠を描画
             if (isDrawingBox) {
                 ctx.beginPath();
                 const w = currentX - startX;
                 const h = currentY - startY;
                 ctx.rect(startX, startY, w, h);
                 ctx.lineWidth = 2;
-                ctx.strokeStyle = 'rgba(220, 53, 69, 0.6)'; // 半透明の赤
+                ctx.strokeStyle = 'rgba(220, 53, 69, 0.6)';
                 ctx.stroke();
             }
         }
@@ -272,44 +371,71 @@
             const cx = marker.circle.x;
             const cy = marker.circle.y;
 
-            // 1. 赤枠と丸数字を繋ぐ線を計算・描画
-            // 赤枠の中で、丸数字の座標に最も近い点を計算（自然な接続のため）
             const nearestX = Math.max(bx, Math.min(cx, bx + bw));
             const nearestY = Math.max(by, Math.min(cy, by + bh));
+            
+            const dx = cx - nearestX;
+            const dy = cy - nearestY;
+            const distance = Math.hypot(dx, dy);
+            
+            let lineEndX = cx;
+            let lineEndY = cy;
+            
+            if (distance > CIRCLE_RADIUS) {
+                const ratio = CIRCLE_RADIUS / distance;
+                lineEndX = cx - dx * ratio;
+                lineEndY = cy - dy * ratio;
+            }
 
+            // 1. 線
             ctx.beginPath();
             ctx.moveTo(nearestX, nearestY);
-            ctx.lineTo(cx, cy);
+            ctx.lineTo(lineEndX, lineEndY);
             ctx.lineWidth = 2;
             ctx.strokeStyle = '#dc3545';
             ctx.stroke();
 
-            // 2. 赤枠を描画
+            // 2. 赤枠
             ctx.beginPath();
             ctx.rect(bx, by, bw, bh);
             ctx.lineWidth = 2;
             ctx.strokeStyle = '#dc3545';
             ctx.stroke();
 
-            // 3. 丸数字を描画
+            // リサイズハンドルの描画（選択中のみ）
+            if (isSelected) {
+                ctx.fillStyle = '#ffffff';
+                ctx.strokeStyle = '#dc3545';
+                ctx.lineWidth = 1;
+                const h = HANDLE_SIZE;
+                const handles = [
+                    {x: bx - h/2, y: by - h/2},
+                    {x: bx + bw - h/2, y: by - h/2},
+                    {x: bx - h/2, y: by + bh - h/2},
+                    {x: bx + bw - h/2, y: by + bh - h/2}
+                ];
+                handles.forEach(pos => {
+                    ctx.beginPath();
+                    ctx.rect(pos.x, pos.y, h, h);
+                    ctx.fill();
+                    ctx.stroke();
+                });
+            }
+
+            // 3. 丸数字
             ctx.beginPath();
             ctx.arc(cx, cy, CIRCLE_RADIUS, 0, Math.PI * 2);
-            ctx.fillStyle = '#dc3545';
-            ctx.fill();
-            
-            // 選択中の場合は縁取りを追加して強調
-            ctx.lineWidth = isSelected ? 3 : 1;
-            ctx.strokeStyle = isSelected ? '#ffdd00' : '#ffffff';
+            ctx.lineWidth = isSelected ? 3 : 2;
+            ctx.strokeStyle = isSelected ? '#ffdd00' : '#dc3545';
             ctx.stroke();
 
-            ctx.fillStyle = '#ffffff';
+            ctx.fillStyle = '#dc3545';
             ctx.font = 'bold 16px Arial';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillText(marker.id, cx, cy);
+            ctx.fillText(marker.displayId, cx, cy);
         }
 
-        // キャンバス上の正確なマウス座標を取得するヘルパー関数
         function getMousePos(evt) {
             const rect = canvas.getBoundingClientRect();
             const scaleX = canvas.width / rect.width;
@@ -320,29 +446,25 @@
             };
         }
 
-        // ----------------------------------------------------
         // エクスポート処理
-        // ----------------------------------------------------
         exportBtn.addEventListener('click', function() {
             if (!currentImage || markers.length === 0) return alert("画像がないか、番号が振られていません。");
-            selectedMarkerId = null; // エクスポート時に選択状態の黄色い枠を消すため
+            selectedMarkerUid = null; 
             updateEditPanel();
             drawAll();
 
             const timestamp = new Date().getTime();
 
-            // 画像のダウンロード
             const imgLink = document.createElement('a');
             imgLink.download = `screen_design_${timestamp}.png`;
             imgLink.href = canvas.toDataURL('image/png');
             imgLink.click();
 
-            // JSONのダウンロード（座標情報も含む）
             const outputData = {
                 exported_at: new Date().toISOString(),
                 total_elements: markers.length,
                 elements: markers.map(m => ({
-                    number: m.id,
+                    number: m.displayId,
                     box: m.box,
                     circle: m.circle,
                     type: m.data.type,
